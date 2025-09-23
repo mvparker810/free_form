@@ -1,27 +1,81 @@
-#pragma once
+//FF_FREEFORM_H_
+//FF_FREEFORM_IMPL_
+//FF_API
 
+/* freeform.h — single-header library
+   Usage:
+     // In exactly one .c/.cpp file:
+     #define FF_FREEFORM_IMPLEMENTATION
+     #include "freeform.h"
 
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
+     // In all other translation units:
+     #include "freeform.h"
+*/
+#ifndef FF_FREEFORM_H_
+#define FF_FREEFORM_H_
+
+#include <stdint.h>
 #include <stdbool.h>
-#include <float.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>  
 
-#include "freeform.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifdef FF_FREEFORM_IMPL_
+#define FF_API
+#else
+#define FF_API extern
+#endif
+
+#pragma region Types;
+
+// -=-=-=-=- Prim Types -=-=-=-=- //
+
+typedef double ff_float;
+typedef struct ff_vec2 {
+    ff_float x;
+    ff_float y;
+} ff_vec2;
 
 
-// CONFIG
+#define FF_INVALID_INDEX 0xFFFF
+typedef struct ff_GeneralHandle {
+    uint16_t idx;
+    uint32_t gen;
+} ff_GeneralHandle;
 
-#define FREEFORM_MAXIMUM_PARAMETERS 2048
-#define FREEFORM_MAXIMUM_ELEMENTS        2048
-#define FREEFORM_MAXIMUM_CONSTRAINTS     2048
+/* ===== Generic gen+idx table: declarations ===== */
+#define FF_DECLARE_GENTABLE(PREFIX, PAYLOAD_T)                                            \
+    typedef struct PREFIX##__slot {                                                       \
+        uint32_t gen;                                                                     \
+        uint16_t next_free;                                                               \
+        bool     alive;                                                                   \
+        PAYLOAD_T payload;                                                                \
+    } PREFIX##__slot;                                                                     \
+                                                                                          \
+    typedef struct PREFIX##__table {                                                      \
+        PREFIX##__slot* slots;                                                            \
+        uint16_t        cap;            /* total slots allocated (<= 65535) */            \
+        uint16_t        alive_count;                                                      \
+        uint16_t        free_head;     /* index of first free slot, or FF_INVALID_INDEX*/ \
+    } PREFIX##__table;                                                                     \
+                                                                                          \
+    FF_API void PREFIX##_init(PREFIX##__table* t, uint16_t initial_cap);                  \
+    FF_API void PREFIX##_free(PREFIX##__table* t);                                        \
+    FF_API ff_GeneralHandle PREFIX##_create(PREFIX##__table* t, const PAYLOAD_T* init);   \
+    FF_API bool PREFIX##_destroy(PREFIX##__table* t, ff_GeneralHandle h);                 \
+    FF_API bool PREFIX##_alive(const PREFIX##__table* t, ff_GeneralHandle h);             \
+    FF_API PAYLOAD_T* PREFIX##_get(PREFIX##__table* t, ff_GeneralHandle h);               \
+    FF_API const PAYLOAD_T* PREFIX##_get_const(const PREFIX##__table* t, ff_GeneralHandle h);\
+    FF_API const ff_GeneralHandle PREFIX##_INVALIDHANDLE;\
 
-static inline void FREEFORM_PRINT_ERR(const char* msg) {
-    fprintf(stderr, "FreeForm Error: %s\n", msg);
-    assert(false);
-}
+ 
 
-//solving
+// -- Solving -- //
+
 typedef enum {
     OperatorType_CONST,
     OperatorType_PARAM,
@@ -36,711 +90,387 @@ typedef enum {
     OperatorType_ACOS,
     OperatorType_SQRT,
     OperatorType_SQR
-} OperatorType;
+} ff_OperatorType;
 
-typedef struct Expression {
-    OperatorType type;
-    struct Expression* a;
-    struct Expression* b;
-    double value; // for consts
-    struct ff_parameter* param_value; // ptr to param for EXPR_PARAM
-} Expression;
-
-typedef struct ff_constraint;
-
-typedef struct Jacobian_Matrix_Row {
-
-    struct ff_constraint* parent_constraint_adr;
-
-    Expression* equation;
-    double error;
-    Expression** derivatives;
-
-    double* dervs_value;
-} Jacobian_Matrix_Row;
-
-
-void expr_free(Expression* expr);
-
-Expression* exprInit_op(OperatorType type, Expression* a, Expression* b);
-Expression* exprInit_const(double value);
-Expression* exprInit_param(struct ff_parameter* param_value);
-
-
-double expr_evaluate(Expression* expr);
-Expression* expr_derivative(Expression* expr, struct ff_parameter* param, bool protect_params);
+typedef struct ff_Expr {
+    ff_OperatorType op_type;
+    struct ff_Expr* expr_a;
+    struct ff_Expr* expr_b;
+    ff_float val; //for constants
+    int param_valie; //idk??
+} ff_Expr;
 
 
 
-//Structs
 
-typedef struct ff_vec2 {
-    double x;
-    double y;
-} ff_vec2;
+// -- Paramters -- //
 
+typedef ff_GeneralHandle ff_ParamHandle;
+typedef ff_float ff_Parameter;
 
-// -- POINT -- //
+// -- Entitites -- //
 
-typedef struct ff_parameter {
-    double v;
-    int status;
-} ff_parameter;
-
-typedef struct ff_point {
-    struct ff_parameter* x;
-    struct ff_parameter* y;
-} ff_point;
-
-// -- LINE -- //
-
-typedef struct ff_line {
-    struct ff_point* p1;
-    struct ff_point* p2;
-} ff_line;
-
-// -- CIRCLE -- //
-
-typedef struct ff_circle {
-    struct ff_point* center;
-    struct ff_parameter* radius;
-} ff_circle;
-
-// -- ARC -- //
-
-typedef struct ff_arc {
-    struct ff_point* start;
-    struct ff_point* end;
-    struct ff_point* center;
-};
-
-// -- ELEMENT -- //
-
-enum ff_element_type {
+enum ff_EntityType {
     FF_POINT,
     FF_LINE,
     FF_CIRCLE,
     FF_ARC
 };
 
+typedef ff_GeneralHandle ff_EntityHandle;
 
-typedef struct ff_element {
-
-    enum ff_element_type type;
-
+typedef struct ff_EntityDef {
+    enum ff_EntityType type;
     union {
-        struct ff_point point;
-        struct ff_line line;
-        struct ff_circle circle;
-        struct ff_arc arc;
-    };
-} ff_element;
+        struct {
+            ff_ParamHandle      x;
+            ff_ParamHandle      y;
+        } point;
+        struct {
+            ff_EntityHandle     p1;
+            ff_EntityHandle     p2;
+        } line;
+        struct {
+            ff_EntityHandle     c;
+            ff_ParamHandle      r;
+        } circle;
+        struct {
+            ff_EntityHandle     p1;
+            ff_EntityHandle     p2;
+            ff_EntityHandle     p3;
+        } arc;
+    } data;
+} ff_EntityDef;
 
-static inline struct ff_vec2 ffPoint_getPos(struct ff_point point) {
-    return (struct ff_vec2) {point.x->v, point.y->v};
+typedef struct ff_Entity {
+    ff_EntityDef def;
+} ff_Entity;
+
+// -- Constraints -- //
+
+#define FFCONS_MAXENT 16
+#define FFCONS_MAXPAR 16
+
+enum ff_ConstraintType;
+
+typedef ff_GeneralHandle ff_ConstraintHandle;
+typedef struct ff_Constraint {
+    enum ff_ConstraintType type;
+
+    ff_EntityHandle     ents[FFCONS_MAXENT];
+    ff_ParamHandle      pars[FFCONS_MAXPAR];
+} ff_Constraint;
+
+
+
+#define FF_CONSTRAINTS_CFG      \
+    CONS(HORIZONTAL)            \
+
+enum {
+    #define CONS(n) FF_##n,
+    FF_CONSTRAINTS_CFG    
+    CONS(COUNT)
+    #undef CONS
+} ff_ConstraintType;
+
+// -- Sketch -- //
+
+FF_DECLARE_GENTABLE(ff_param,      ff_Parameter);
+FF_DECLARE_GENTABLE(ff_entity,     ff_Entity);
+FF_DECLARE_GENTABLE(ff_constraint, ff_Constraint);
+
+typedef struct ff_Sketch {
+    ff_param__table      params;
+    ff_entity__table     entities;
+    ff_constraint__table constraints;
+} ff_Sketch;
+
+
+
+
+
+#pragma endregion;
+
+
+
+
+
+
+
+
+
+
+
+
+
+FF_API void ff_SketchInit(ff_Sketch* sk, uint16_t p_cap, uint16_t e_cap, uint16_t c_cap);
+FF_API void ff_SketchFree(ff_Sketch* sk);
+
+
+FF_API ff_EntityDef ff_EntityDef_DEFAULT(enum ff_EntityType type);
+FF_API bool ff_EntityDef_IsValid(ff_EntityDef def);
+
+/* Example high-level helpers (nice to have) */
+FF_API ff_ParamHandle      ff_CreateParam(ff_Sketch* sk, ff_Parameter value);
+FF_API ff_EntityHandle     ff_CreateEntity(ff_Sketch* sk, const ff_EntityDef e_def);
+FF_API ff_ConstraintHandle ff_CreateConstraint(ff_Sketch* sk, const ff_Constraint* c);
+
+FF_API bool ff_DestroyParam(ff_Sketch* sk, ff_ParamHandle h);
+FF_API bool ff_DestroyEntity(ff_Sketch* sk, ff_EntityHandle h);
+FF_API bool ff_DestroyConstraint(ff_Sketch* sk, ff_ConstraintHandle h);
+
+// high level gettrs n setters //
+FF_API ff_Parameter*       ff_GetParam(ff_Sketch* sk, ff_ParamHandle h);
+FF_API const ff_Parameter* ff_GetParamConst(const ff_Sketch* sk, ff_ParamHandle h);
+
+FF_API ff_Entity*          ff_GetEntity(ff_Sketch* sk, ff_EntityHandle h);
+FF_API const ff_Entity*    ff_GetEntityConst(const ff_Sketch* sk, ff_EntityHandle h);
+
+FF_API ff_Constraint*          ff_GetConstraint(ff_Sketch* sk, ff_ConstraintHandle h);
+FF_API const ff_Constraint*    ff_GetConstraintConst(const ff_Sketch* sk, ff_ConstraintHandle h);
+
+
+
+#ifdef FF_FREEFORM_IMPL_
+
+
+
+
+static int ff_ERROR(const char* msg) {
+    exit(1);
 }
 
-static inline void ffParameter_set(struct ff_parameter* param, double v) {
-    param->v = v;
+
+/* ===== Generic gen+idx table: definitions ===== */
+#define FF__CLAMP_CAP_16(x) ((uint16_t)((x) > 0xFFFF ? 0xFFFF : (x)))
+
+#define FF_DEFINE_GENTABLE(PREFIX, PAYLOAD_T)                                             \
+    static void PREFIX##__grow(PREFIX##__table* t, uint16_t add) {                        \
+        if (add == 0) return;                                                             \
+        uint32_t new_cap32 = (uint32_t)t->cap + (uint32_t)add;                            \
+        uint16_t new_cap   = FF__CLAMP_CAP_16(new_cap32);                                 \
+        if (new_cap <= t->cap) return; /* hit 65535 */                                    \
+        PREFIX##__slot* new_slots = (PREFIX##__slot*)realloc(                             \
+            t->slots, sizeof(PREFIX##__slot) * new_cap);                                  \
+        if (!new_slots) return; /* OOM: leave table unchanged */                          \
+        /* initialize newly added range and link them into free list */                   \
+        for (uint16_t i = t->cap; i < new_cap; ++i) {                                     \
+            new_slots[i].gen       = 1;                                                   \
+            new_slots[i].alive     = false;                                               \
+            new_slots[i].next_free = (uint16_t)(i + 1);                                   \
+            memset(&new_slots[i].payload, 0, sizeof(PAYLOAD_T));                          \
+        }                                                                                 \
+        new_slots[new_cap - 1].next_free = t->free_head;                                  \
+        t->free_head = t->cap;                                                            \
+        t->slots    = new_slots;                                                          \
+        t->cap      = new_cap;                                                            \
+    }                                                                                     \
+                                                                                          \
+    void PREFIX##_init(PREFIX##__table* t, uint16_t initial_cap) {                        \
+        t->slots       = NULL;                                                            \
+        t->cap         = 0;                                                               \
+        t->alive_count = 0;                                                               \
+        t->free_head   = FF_INVALID_INDEX;                                                \
+        if (initial_cap) PREFIX##__grow(t, initial_cap);                                  \
+    }                                                                                     \
+                                                                                          \
+    void PREFIX##_free(PREFIX##__table* t) {                                              \
+        free(t->slots);                                                                   \
+        t->slots = NULL;                                                                  \
+        t->cap = t->alive_count = 0;                                                      \
+        t->free_head = FF_INVALID_INDEX;                                                  \
+    }                                                                                     \
+                                                                                          \
+    ff_GeneralHandle PREFIX##_create(PREFIX##__table* t, const PAYLOAD_T* init) {         \
+        if (t->free_head == FF_INVALID_INDEX) {                                           \
+            /* grow (geometric) */                                                        \
+            uint16_t add = (t->cap < 64) ? 64 : (t->cap >> 1);                            \
+            if (add == 0) add = 64;                                                       \
+            PREFIX##__grow(t, add);                                                       \
+            if (t->free_head == FF_INVALID_INDEX) {                                       \
+                return (ff_GeneralHandle){ FF_INVALID_INDEX, 0 };                         \
+            }                                                                             \
+        }                                                                                 \
+        uint16_t idx = t->free_head;                                                      \
+        PREFIX##__slot* s = &t->slots[idx];                                               \
+        t->free_head = s->next_free;                                                      \
+        s->alive = true;                                                                  \
+        if (init) memcpy(&s->payload, init, sizeof(PAYLOAD_T));                           \
+        else      memset(&s->payload, 0,    sizeof(PAYLOAD_T));                           \
+        t->alive_count++;                                                                 \
+        return (ff_GeneralHandle){ idx, s->gen };                                         \
+    }                                                                                     \
+                                                                                          \
+    static inline bool PREFIX##__valid(const PREFIX##__table* t, ff_GeneralHandle h) {    \
+        return (h.idx != FF_INVALID_INDEX) && (h.idx < t->cap);                           \
+    }                                                                                     \
+                                                                                          \
+    bool PREFIX##_alive(const PREFIX##__table* t, ff_GeneralHandle h) {                   \
+        if (!PREFIX##__valid(t, h)) return false;                                         \
+        const PREFIX##__slot* s = &t->slots[h.idx];                                       \
+        return s->alive && (s->gen == h.gen);                                             \
+    }                                                                                     \
+                                                                                          \
+    PAYLOAD_T* PREFIX##_get(PREFIX##__table* t, ff_GeneralHandle h) {                     \
+        if (!PREFIX##_alive(t, h)) return NULL;                                           \
+        return &t->slots[h.idx].payload;                                                  \
+    }                                                                                     \
+                                                                                          \
+    const PAYLOAD_T* PREFIX##_get_const(const PREFIX##__table* t, ff_GeneralHandle h) {   \
+        if (!PREFIX##_alive(t, h)) return NULL;                                           \
+        return &t->slots[h.idx].payload;                                                  \
+    }                                                                                     \
+                                                                                          \
+    bool PREFIX##_destroy(PREFIX##__table* t, ff_GeneralHandle h) {                       \
+        if (!PREFIX##_alive(t, h)) return false;                                          \
+        PREFIX##__slot* s = &t->slots[h.idx];                                             \
+        s->alive = false;                                                                 \
+        s->gen  += 1u; /* bump generation to invalidate stale handles */                  \
+        s->next_free = t->free_head;                                                      \
+        t->free_head = h.idx;                                                             \
+        if (t->alive_count) t->alive_count--;                                             \
+        return true;                                                                      \
+    }\
+    \
+    const ff_GeneralHandle PREFIX##_INVALIDHANDLE = { FF_INVALID_INDEX, 0u };\
+
+
+FF_DEFINE_GENTABLE(ff_param,      ff_Parameter)
+FF_DEFINE_GENTABLE(ff_entity,     ff_Entity)
+FF_DEFINE_GENTABLE(ff_constraint, ff_Constraint)
+
+/* ===== Sketch helpers ===== */
+void ff_SketchInit(ff_Sketch* sk, uint16_t p_cap, uint16_t e_cap, uint16_t c_cap) {
+    ff_param_init(&sk->params,      p_cap);
+    ff_entity_init(&sk->entities,   e_cap);
+    ff_constraint_init(&sk->constraints, c_cap);
+}
+void ff_SketchFree(ff_Sketch* sk) {
+    ff_param_free(&sk->params);
+    ff_entity_free(&sk->entities);
+    ff_constraint_free(&sk->constraints);
 }
 
-static inline void ffPoint_setPos(struct ff_point* point, struct ff_vec2 position) {
-    ffParameter_set(point->x, position.x);
-    ffParameter_set(point->y, position.y);
+
+
+
+ff_EntityDef ff_EntityDef_DEFAULT(enum ff_EntityType type) {
+    ff_EntityDef def;
+
+    def.type = type;
+
+    def.data.point.x     = ff_param_INVALIDHANDLE;
+    def.data.point.y     = ff_param_INVALIDHANDLE;
+
+    def.data.line.p1     = ff_entity_INVALIDHANDLE;
+    def.data.line.p2     = ff_entity_INVALIDHANDLE;
+
+    def.data.circle.c    = ff_entity_INVALIDHANDLE;
+    def.data.circle.r    = ff_param_INVALIDHANDLE;
+
+    def.data.arc.p1      = ff_entity_INVALIDHANDLE;
+    def.data.arc.p2      = ff_entity_INVALIDHANDLE;
+    def.data.arc.p3      = ff_entity_INVALIDHANDLE;
+
+    return def;
 }
 
+bool ff_EntityDef_IsValid (ff_EntityDef def) {
+    const ff_Parameter*     param;
+    const ff_Entity*        ent;
 
+    switch (def.type) {
+        case (FF_POINT):
+            if (0) { ff_ERROR("error\n"); return false; }
+        break;
+        case (FF_LINE):
 
-// -- CONSTRAINT DEFINITION UTILS -- //
+        break;
+        case (FF_CIRCLE):
 
-#define TOKEN_TO_ARG(prefix, suffix, token) prefix##token##suffix
-#define PLACE_COMMA_1 ,
-#define PLACE_COMMA_0
-#define PLACE_COMMA(condition) PLACE_COMMA_##condition
+        break;
+        case (FF_ARC):
 
-#define EXPAND_ARGS(prefix, suffix, comma, ...) EXPAND_ARGS_HELPER(prefix, suffix, comma, __VA_ARGS__, 5, 4, 3, 2, 1)
-#define EXPAND_ARGS_HELPER(prefix, suffix, comma, _1, _2, _3, _4, _5, N, ...) EXPAND_ARGS_##N(prefix, suffix, comma, _1, _2, _3, _4, _5)
-#define EXPAND_ARGS_1(prefix, suffix, comma, arg1, ...) \
-TOKEN_TO_ARG(prefix, suffix, arg1)
-
-#define EXPAND_ARGS_2(prefix, suffix, comma, arg1, arg2, ...) \
-TOKEN_TO_ARG(prefix, suffix, arg1) PLACE_COMMA(comma)           \
-TOKEN_TO_ARG(prefix, suffix, arg2)
-
-#define EXPAND_ARGS_3(prefix, suffix, comma, arg1, arg2, arg3, ...) \
-TOKEN_TO_ARG(prefix, suffix, arg1) PLACE_COMMA(comma) \
-TOKEN_TO_ARG(prefix, suffix, arg2) PLACE_COMMA(comma) \
-TOKEN_TO_ARG(prefix, suffix, arg3)
-
-#define EXPAND_ARGS_4(prefix, suffix, comma, arg1, arg2, arg3, arg4, ...) \
-TOKEN_TO_ARG(prefix, suffix, arg1) PLACE_COMMA(comma) \
-TOKEN_TO_ARG(prefix, suffix, arg2) PLACE_COMMA(comma) \
-TOKEN_TO_ARG(prefix, suffix, arg3) PLACE_COMMA(comma) \
-TOKEN_TO_ARG(prefix, suffix, arg4)
-
-#define EXPAND_ARGS_5(prefix, suffix, comma, arg1, arg2, arg3, arg4, arg5, ...) \
-TOKEN_TO_ARG(prefix, suffix, arg1) PLACE_COMMA(comma) \
-TOKEN_TO_ARG(prefix, suffix, arg2) PLACE_COMMA(comma) \
-TOKEN_TO_ARG(prefix, suffix, arg3) PLACE_COMMA(comma) \
-TOKEN_TO_ARG(prefix, suffix, arg4) PLACE_COMMA(comma) \
-TOKEN_TO_ARG(prefix, suffix, arg5)
-
-//TODO undef all of the aboev later
-//TODO is there a better way to do this?
-
-enum ff_constraint_type;
-
-typedef struct ff_constraint {
-
-    enum ff_constraint_type type;
-
-   // Expression** expressions;
-    struct Jacobian_Matrix_Row* matrix_rows;
-    int eq_len;
-
-    //Point
-    #define ffConsAttr_P1 struct ff_point* P1
-    #define ffConsAttr_P1_ATCH cons.P1 = P1; 
-    ffConsAttr_P1;
-
-    #define ffConsAttr_P2 struct ff_point* P2
-    #define ffConsAttr_P2_ATCH cons.P2 = P2; 
-    ffConsAttr_P2;
-
-    #define ffConsAttr_P3 struct ff_point* P3
-    #define ffConsAttr_P3_ATCH cons.P3 = P3; 
-    ffConsAttr_P3;
-
-    //Line
-    #define ffConsAttr_L1 struct ff_line* L1
-    #define ffConsAttr_L1_ATCH cons.L1 = L1; 
-    ffConsAttr_L1;
-
-    #define ffConsAttr_L2 struct ff_line* L2
-    #define ffConsAttr_L2_ATCH cons.L2 = L2; 
-    ffConsAttr_L2;
-
-    #define ffConsAttr_L3 struct ff_line* L3
-    #define ffConsAttr_L3_ATCH cons.L3 = L3; 
-    ffConsAttr_L3;
-
-    //Circle
-    #define ffConsAttr_C1 struct ff_circle* C1
-    #define ffConsAttr_C1_ATCH cons.C1 = C1; 
-    ffConsAttr_C1;
-
-    #define ffConsAttr_C2 struct ff_circle* C2
-    #define ffConsAttr_C2_ATCH cons.C2 = C2; 
-    ffConsAttr_C2;
-
-    #define ffConsAttr_C3 struct ff_circle* C3
-    #define ffConsAttr_C3_ATCH cons.C3 = C3; 
-    ffConsAttr_C3;
-
-    //Arcs
-    #define ffConsAttr_A1 struct ff_arc* A1
-    #define ffConsAttr_A1_ATCH cons.A1 = A1; 
-    ffConsAttr_A1;
-
-    #define ffConsAttr_A2 struct ff_arc* A2
-    #define ffConsAttr_A2_ATCH cons.A2 = A2; 
-    ffConsAttr_A2;
-
-    #define ffConsAttr_A3 struct ff_arc* A3
-    #define ffConsAttr_A3_ATCH cons.A3 = A3; 
-    ffConsAttr_A3;
-
-    //Params
-    #define ffConsAttr_N1 struct ff_parameter* N1
-    #define ffConsAttr_N1_ATCH cons.N1 = N1; 
-    ffConsAttr_N1;
-
-    #define ffConsAttr_N2 struct ff_parameter* N2
-    #define ffConsAttr_N2_ATCH cons.N2 = N2; 
-    ffConsAttr_N2;
-
-    #define ffConsAttr_N3 struct ff_parameter* N3
-    #define ffConsAttr_N3_ATCH cons.N3 = N3; 
-    ffConsAttr_N3;
-
-} ff_constraint;
-
-typedef struct ff_constraint_build_data {
-    ff_constraint cons;
-    struct Jacobian_Matrix_Row* jacob_rows;
-    int jacob_rows_len;
-} ff_constraint_build_data;
-
-
-static inline void init_constraint(ff_constraint_build_data* cons_data, int eq_count) {
-    cons_data->jacob_rows = malloc(sizeof(struct Jacobian_Matrix_Row) * eq_count);
-    cons_data->jacob_rows_len = eq_count;
-    for (int eq_idx = 0; eq_idx < eq_count; eq_idx++) {
-        struct Jacobian_Matrix_Row* row = &cons_data->jacob_rows[eq_idx];
-        row->derivatives = NULL;
-        row->dervs_value = NULL;
+        break;
+        default:
+        ff_ERROR("Invalid Type for Entity Def");
+        break;
     }
-    int i = 0;
+
+    return true;
 }
 
-#define FFCONS_BEGIN_EQUATION_DEF(NAME, EQUATION_COUNT)                                 \
-    static inline void FFCONSEQUATIONS_##NAME (ff_constraint_build_data* cons_data) {   \
-        init_constraint(cons_data, EQUATION_COUNT);                                     \
-        struct ff_constraint* cons = &cons_data->cons;                                         \
-        int i = 0;                                                                      \
-
-        
-
-#define FFCONS_ADD_EQUATION(eq) \
-    cons_data->jacob_rows[i].equation = eq;  \
-    i++;                        \
-        
-    
-#define FFCONS_END_EQUATION_DEF                                                     \
-        if (i != cons_data->jacob_rows_len) FREEFORM_PRINT_ERR("ERROR: TODO@");     \
-    }                                                                               \
-
-
-
-// -- CONSTRAINT DEFINITIONS -- //
-
-#define FF_CONSTRAINT_LIST                      \
-    X(POINT_ON_POINT, P1, P2)                   \
-    X(HORIZONTAL, P1, P2)                       \
-    X(VERTICAL, P1, P2)                         \
-                                                \
-    X(POINT_ON_LINE, P1, L1)                    \
-    X(POINT_ON_CIRCLE, P1, C1)                  \
-                                                \
-    X(LINE_TANG_CIRCLE, L1, C1)                 \
-                                                \
-    X(PARALLEL, L1, L2)                         \
-    X(PERPENDICULAR, L1, L2)                    \
-    X(MIDPOINT, P1, P2, P3)                     \
-    X(ANGLE, L1, L2, N1)                        \
-                                                \
-    X(POINT_TO_POINT_DIST, P1, P2, N1)          \
-
-
-
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_POINT_ON_POINT, 2)
-
-        FFCONS_ADD_EQUATION(exprInit_op(
-            OperatorType_SUB,
-            exprInit_param(cons->P1->x),
-            exprInit_param(cons->P2->x)
-        ));
-        FFCONS_ADD_EQUATION(exprInit_op(
-            OperatorType_SUB,
-            exprInit_param(cons->P1->y),
-            exprInit_param(cons->P2->y)
-        ));
-        
-        FFCONS_END_EQUATION_DEF
-
-        //P1 /L1 
-        //todo remove line noraml to circle in favor of this?
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_POINT_ON_LINE, 1)
-
-    FFCONS_ADD_EQUATION(
-        exprInit_op(OperatorType_SUB,
-            exprInit_op(OperatorType_MUL, 
-                exprInit_op(OperatorType_SUB,exprInit_param(cons->L1->p2->x),exprInit_param(cons->L1->p1->x)), 
-                exprInit_op(OperatorType_SUB,exprInit_param(cons->P1->y),exprInit_param(cons->L1->p1->y))
-            )
-            , // MINUS 
-            exprInit_op(OperatorType_MUL, 
-                exprInit_op(OperatorType_SUB,exprInit_param(cons->L1->p2->y),exprInit_param(cons->L1->p1->y)), 
-                exprInit_op(OperatorType_SUB,exprInit_param(cons->P1->x),exprInit_param(cons->L1->p1->x))
-            )
-        )
-    );
-    FFCONS_END_EQUATION_DEF
-
-
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_HORIZONTAL, 1)
-
-        FFCONS_ADD_EQUATION(exprInit_op(
-            OperatorType_SUB,
-            exprInit_param(cons->P1->y),
-            exprInit_param(cons->P2->y)
-        ));
-
-        FFCONS_END_EQUATION_DEF
-
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_VERTICAL, 1)
-
-        FFCONS_ADD_EQUATION(exprInit_op(
-            OperatorType_SUB,
-            exprInit_param(cons->P1->x),
-            exprInit_param(cons->P2->x)
-        ));
-
-        FFCONS_END_EQUATION_DEF
-
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_LINE_TANG_CIRCLE, 1)
-    FFCONS_ADD_EQUATION(
-        exprInit_op(OperatorType_SUB,
-            exprInit_op(OperatorType_SQR,
-                exprInit_op(OperatorType_SUB,
-                    exprInit_op(OperatorType_MUL, 
-                        exprInit_op(OperatorType_SUB,exprInit_param(cons->L1->p2->x),exprInit_param(cons->L1->p1->x)), 
-                        exprInit_op(OperatorType_SUB,exprInit_param(cons->C1->center->y),exprInit_param(cons->L1->p1->y))
-                    )
-                    , // MINUS 
-                    exprInit_op(OperatorType_MUL, 
-                        exprInit_op(OperatorType_SUB,exprInit_param(cons->L1->p2->y),exprInit_param(cons->L1->p1->y)), 
-                        exprInit_op(OperatorType_SUB,exprInit_param(cons->C1->center->x),exprInit_param(cons->L1->p1->x))
-                    )
-                ),NULL
-            )
-            , // MINUS
-            exprInit_op(OperatorType_MUL,
-                exprInit_op(OperatorType_SQR,exprInit_param(cons->C1->radius),NULL)
-                ,
-                exprInit_op(OperatorType_ADD,
-                    exprInit_op(OperatorType_SQR,
-                        exprInit_op(OperatorType_SUB,
-                            exprInit_param(cons->L1->p2->x)
-                            ,
-                            exprInit_param(cons->L1->p1->x)
-                        )
-                    ,NULL)
-                    , // PLUS
-                    exprInit_op(OperatorType_SQR,
-                        exprInit_op(OperatorType_SUB,
-                            exprInit_param(cons->L1->p2->y)
-                            ,
-                            exprInit_param(cons->L1->p1->y)
-                        )
-                    ,NULL)
-                )
-            )
-        )
-    );
-    FFCONS_END_EQUATION_DEF
-    
-
-    /*
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_LINE_NORM_CIRCLE, 1)
-
-    FFCONS_ADD_EQUATION(
-        exprInit_op(OperatorType_SUB,
-            exprInit_op(OperatorType_MUL, 
-                exprInit_op(OperatorType_SUB,exprInit_param(cons->L1->p2->x),exprInit_param(cons->L1->p1->x)), 
-                exprInit_op(OperatorType_SUB,exprInit_param(cons->C1->center->y),exprInit_param(cons->L1->p1->y))
-            )
-            , // MINUS 
-            exprInit_op(OperatorType_MUL, 
-                exprInit_op(OperatorType_SUB,exprInit_param(cons->L1->p2->y),exprInit_param(cons->L1->p1->y)), 
-                exprInit_op(OperatorType_SUB,exprInit_param(cons->C1->center->x),exprInit_param(cons->L1->p1->x))
-            )
-        )
-    );
-    FFCONS_END_EQUATION_DEF
-    */
-//todo@ make circle radius instaed of coinicdent point
-
-// Difference of slopes
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_PARALLEL, 1)
-
-    
-    FFCONS_ADD_EQUATION(exprInit_op(
-        OperatorType_SUB,
-        
-        exprInit_op(
-            OperatorType_MUL,
-            exprInit_op(
-                OperatorType_SUB,
-                exprInit_param(cons->L1->p2->y),
-                exprInit_param(cons->L1->p1->y)
-            ),
-            exprInit_op(
-                OperatorType_SUB,
-                exprInit_param(cons->L2->p2->x),
-                exprInit_param(cons->L2->p1->x)
-            )
-        )
-        ,
-
-        exprInit_op(
-            OperatorType_MUL,
-            exprInit_op(
-                OperatorType_SUB,
-                exprInit_param(cons->L2->p2->y),
-                exprInit_param(cons->L2->p1->y)
-            ),
-            exprInit_op(
-                OperatorType_SUB,
-                exprInit_param(cons->L1->p2->x),
-                exprInit_param(cons->L1->p1->x)
-            )
-        )
-
-    ));
-
-    FFCONS_END_EQUATION_DEF
-
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_PERPENDICULAR, 1)
-
-    
-    FFCONS_ADD_EQUATION(exprInit_op(
-        OperatorType_ADD,
-        
-        exprInit_op(
-            OperatorType_MUL,
-            exprInit_op(
-                OperatorType_SUB,
-                exprInit_param(cons->L1->p2->y),
-                exprInit_param(cons->L1->p1->y)
-            ),
-            exprInit_op(
-                OperatorType_SUB,
-                exprInit_param(cons->L2->p2->y),
-                exprInit_param(cons->L2->p1->y)
-            )
-        )
-        ,
-
-        exprInit_op(
-            OperatorType_MUL,
-            exprInit_op(
-                OperatorType_SUB,
-                exprInit_param(cons->L1->p2->x),
-                exprInit_param(cons->L1->p1->x)
-            ),
-            exprInit_op(
-                OperatorType_SUB,
-                exprInit_param(cons->L2->p2->x),
-                exprInit_param(cons->L2->p1->x)
-            )
-        )
-
-    ));
-
-    FFCONS_END_EQUATION_DEF
-
-
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_MIDPOINT, 2)
-
-
-    FFCONS_ADD_EQUATION(exprInit_op(
-        OperatorType_SUB,
-        exprInit_param(cons->P2->x), // x_m
-        exprInit_op(
-            OperatorType_DIV,
-            exprInit_op(
-                OperatorType_ADD,
-                exprInit_param(cons->P1->x), // x_a
-                exprInit_param(cons->P3->x)  // x_b
-            ),
-            exprInit_const(2.0)
-        )
-    ));
-    
-
-    FFCONS_ADD_EQUATION(exprInit_op(
-        OperatorType_SUB,
-        exprInit_param(cons->P2->y), // x_m
-        exprInit_op(
-            OperatorType_DIV,
-            exprInit_op(
-                OperatorType_ADD,
-                exprInit_param(cons->P1->y), // x_a
-                exprInit_param(cons->P3->y)  // x_b
-            ),
-            exprInit_const(2.0)
-        )
-    ));
-
-    FFCONS_END_EQUATION_DEF
-
-
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_POINT_TO_POINT_DIST, 1)
-
-    FFCONS_ADD_EQUATION(exprInit_op(OperatorType_SUB,
-        exprInit_op(OperatorType_ADD, 
-            exprInit_op(OperatorType_SQR, 
-                exprInit_op(OperatorType_SUB, exprInit_param(cons->P2->x), exprInit_param(cons->P1->x))
-                ,NULL)
-            , 
-            exprInit_op(OperatorType_SQR,  
-                exprInit_op(OperatorType_SUB, exprInit_param(cons->P2->y), exprInit_param(cons->P1->y))
-                ,NULL)
-        ), exprInit_op(OperatorType_SQR, exprInit_param(cons->N1), NULL)
-    ));
-
-    FFCONS_END_EQUATION_DEF
-
-FFCONS_BEGIN_EQUATION_DEF(FF_CONSTRAINT_ANGLE, 1)
-
-    FFCONS_ADD_EQUATION(exprInit_op(
-        OperatorType_SUB,
-        exprInit_op(OperatorType_ACOS,
-            exprInit_op(OperatorType_DIV,
-                exprInit_op(OperatorType_ADD,
-                    exprInit_op(OperatorType_MUL,
-                        exprInit_op(OperatorType_SUB, exprInit_param(cons->L1->p2->x), exprInit_param(cons->L1->p1->x)),
-                        exprInit_op(OperatorType_SUB, exprInit_param(cons->L2->p2->x), exprInit_param(cons->L2->p1->x))
-                    ),
-                    exprInit_op(OperatorType_MUL,
-                        exprInit_op(OperatorType_SUB, exprInit_param(cons->L1->p2->y), exprInit_param(cons->L1->p1->y)),
-                        exprInit_op(OperatorType_SUB, exprInit_param(cons->L2->p2->y), exprInit_param(cons->L2->p1->y))
-                    )
-                ),
-                exprInit_op(OperatorType_MUL,
-                    exprInit_op(OperatorType_SQRT,
-                        exprInit_op(OperatorType_ADD,
-                            exprInit_op(OperatorType_SQR, exprInit_op(OperatorType_SUB, exprInit_param(cons->L1->p2->x), exprInit_param(cons->L1->p1->x)), NULL),
-                            exprInit_op(OperatorType_SQR, exprInit_op(OperatorType_SUB, exprInit_param(cons->L1->p2->y), exprInit_param(cons->L1->p1->y)), NULL)
-                        ),
-                        NULL
-                    ),
-                    exprInit_op(OperatorType_SQRT,
-                        exprInit_op(OperatorType_ADD,
-                            exprInit_op(OperatorType_SQR, exprInit_op(OperatorType_SUB, exprInit_param(cons->L2->p2->x), exprInit_param(cons->L2->p1->x)), NULL),
-                            exprInit_op(OperatorType_SQR, exprInit_op(OperatorType_SUB, exprInit_param(cons->L2->p2->y), exprInit_param(cons->L2->p1->y)), NULL)
-                        ),
-                        NULL
-                    )
-                )
-            )
-        ,NULL),
-        exprInit_param(cons->N1)
- 
-    ));
-
-    FFCONS_END_EQUATION_DEF
-
-
-// -- END CONSTRAINT DEFINITIONS -- //
-
-#define X(NAME, ...) FF_CONSTRAINT_##NAME,
-typedef enum {
-    FF_CONSTRAINT_LIST
-
-    FF_CONSTRAINT_TYPE_COUNT
-} ff_constraint_type;
-
-#undef X
-#define X(NAME, ...)                                                                                                \
-    static inline ff_constraint_build_data ffConstraint_init_##NAME(EXPAND_ARGS(ffConsAttr_, , 1, __VA_ARGS__)) {   \
-                                                                                                                    \
-        ff_constraint_build_data result;                                                                            \
-        struct ff_constraint cons;                                                                                  \
-                                                                                                                    \
-        EXPAND_ARGS(ffConsAttr_, _ATCH, 0, __VA_ARGS__);                                                            \
-        result.cons = cons;                                                                                         \
-        result.cons.type = FF_CONSTRAINT_##NAME;                                                                    \
-        FFCONSEQUATIONS_FF_CONSTRAINT_##NAME(&result);                                                              \
-        return result;                                                                                              \
-    }                                                                                                               \
-
-FF_CONSTRAINT_LIST
-#undef X
-
-
-
-
-// -- GENERAL -- //
-
-#define PARAMMODE_DISABLED 0
-#define PARAMMODE_DYNAMIC 1
-#define PARAMMODE_FIXED 2
-
-typedef struct ff_sketch {
-
-    struct ff_element elements[FREEFORM_MAXIMUM_ELEMENTS];
-    int* working_elements_idxs;
-    int working_elements_len;
-    
-    struct ff_parameter parameters[FREEFORM_MAXIMUM_PARAMETERS];
-    int parameters_count;
-    
-    int* dynamic_param_idxs;
-    int dynamic_params_count;
-
-    ff_constraint constraints[FREEFORM_MAXIMUM_CONSTRAINTS];
-    int constraint_count;  
-
-    //Solving data
-    struct Jacobian_Matrix_Row* jacobian_matrix;
-    int equation_count;
-
-    double* normal_mat; //Normal Mat: 2D matrix of eq_len x eq_len
-    double* intermediate_solution; //1D matrix of eq_len
-    double* dynamic_parameter_updates; //1D matrix of param_len
-
-} ff_sketch;
-
-static inline int ffSketch_getAttr_element_count(ff_sketch* sketch) {
-    return sketch->working_elements_len;
+ff_ParamHandle ff_CreateParam(ff_Sketch* sk, ff_Parameter value) {
+    return ff_param_create(&sk->params, &value);
+}
+ff_EntityHandle ff_CreateEntity(ff_Sketch* sk, const ff_EntityDef e_def) {
+    if (!ff_EntityDef_IsValid(e_def)) return ff_entity_INVALIDHANDLE;
+    ff_Entity ent = (ff_Entity) { .def = e_def };
+    return ff_entity_create(&sk->entities, &ent);
+}
+ff_ConstraintHandle ff_CreateConstraint(ff_Sketch* sk, const ff_Constraint* c) {
+    return ff_constraint_create(&sk->constraints, c);
 }
 
-static inline int ffSketch_getAttr_constraint_count(ff_sketch* sketch) {
-    return sketch->constraint_count;
+bool ff_DestroyParam(ff_Sketch* sk, ff_ParamHandle h) {
+    return ff_param_destroy(&sk->params, h);
 }
-
-static inline int ffSketch_getAttr_equation_count(ff_sketch* sketch) {
-    return sketch->equation_count;
+bool ff_DestroyEntity(ff_Sketch* sk, ff_EntityHandle h) {
+    return ff_entity_destroy(&sk->entities, h);
+}
+bool ff_DestroyConstraint(ff_Sketch* sk, ff_ConstraintHandle h) {
+    return ff_constraint_destroy(&sk->constraints, h);
 }
 
 
-typedef struct ff_sketch_drawing_config {
-    void (*draw_point)  (struct ff_element* element);
-    void (*draw_line)   (struct ff_element* element);
-    void (*draw_circle) (struct ff_element* element);
-    void (*draw_arc)    (struct ff_element* element);
-} ff_sketch_drawing_config;
 
 
-//GLOBALS
 
-#define FF_PI 3.14159265358979323846
-#define FF_TAU (2.0 * FF_PI)
-#define FF_HALF_PI (FF_PI / 2.0)
-
-#define FF_DBL_MAX DBL_MAX
-
-
-// - MATH - //
-
-struct ff_vec2 ffVec2_add(struct ff_vec2 a, struct ff_vec2 b);
-struct ff_vec2 ffVec2_sub(struct ff_vec2 a, struct ff_vec2 b);
-double ffVec2_distance_squared(struct ff_vec2 a, struct ff_vec2 b);
-double ffVec2_distance(struct ff_vec2 a, struct ff_vec2 b);
-double ffVec2_length_squared(struct ff_vec2 v);
-double ffVec2_length(struct ff_vec2 v);
-double ffMath_line_distance(struct ff_line line, struct ff_vec2 p);
+/* === High-level getters/setters (definitions) === */
+ff_Parameter* ff_GetParam(ff_Sketch* sk, ff_ParamHandle h) {
+    return ff_param_get(&sk->params, h);
+}
+const ff_Parameter* ff_GetParamConst(const ff_Sketch* sk, ff_ParamHandle h) {
+    return ff_param_get_const(&sk->params, h);
+}
 
 
-//FUNCS
-void ff_initialize_infastructure();
+ff_Entity* ff_GetEntity(ff_Sketch* sk, ff_EntityHandle h) {
+    return ff_entity_get(&sk->entities, h);
+}
+const ff_Entity* ff_GetEntityConst(const ff_Sketch* sk, ff_EntityHandle h) {
+    return ff_entity_get_const(&sk->entities, h);
+}
 
-ff_sketch ffSketch_create();
-void ffSketch_destroy(ff_sketch* sketch);
 
-struct ff_parameter* ffSketch_add_parameter(ff_sketch* sketch, double value, bool affix);
-
-struct ff_point* ffSketch_add_point(struct ff_sketch* sketch, struct ff_element** element_handle_out, struct ff_vec2 point);
-struct ff_line* ffSketch_add_line(struct ff_sketch* sketch, struct ff_element** element_handle_out, struct ff_vec2 p1, struct ff_vec2 p2);
-struct ff_circle* ffSketch_add_circle(struct ff_sketch* sketch, struct ff_element** element_handle_out, struct ff_vec2 center, double radius);
-struct ff_arc* ffSketch_add_arc(struct ff_sketch* sketch, struct ff_element** element_handle_out, struct ff_vec2 start, struct ff_vec2 end, struct ff_vec2 center);
-
-int ffSketch_add_constraint(ff_sketch* sketch, ff_constraint_build_data constraint_data);
-int ffSketch_solve(ff_sketch* sketch, double tolerance, int maximum_steps);
-
-//Editor utils
-
-//todo@
-double ffElement_distance_to(struct ff_element element, struct ff_vec2 point);
-struct ff_element* ffSketch_closest_element(struct ff_sketch* sketch, struct ff_vec2 point, double point_override_radius, double* distance_out);
-struct ff_element* ffSketch_closest_element_exc(struct ff_sketch* sketch, struct ff_vec2 point, double point_override_radius, double* distance_out, struct ff_element* to_exclude);
-
-void ffSketch_draw(ff_sketch* sketch, struct ff_sketch_drawing_config config);
-
-void SOLVE_TEST();
+ff_Constraint* ff_GetConstraint(ff_Sketch* sk, ff_ConstraintHandle h) {
+    return ff_constraint_get(&sk->constraints, h);
+}
+const ff_Constraint* ff_GetConstraintConst(const ff_Sketch* sk, ff_ConstraintHandle h) {
+    return ff_constraint_get_const(&sk->constraints, h);
+}
 
 
 
 
+#endif //FF_FREEFORM_IMPL_
+
+
+
+
+
+
+
+
+#undef FF_CONSTRAINTS_CFG
+
+
+
+
+
+
+#ifdef __cplusplus
+}
+#endif //extern 'C'
+
+#endif //FF_FREEFORM_H_
