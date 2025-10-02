@@ -4,6 +4,9 @@ free_form is a minimalist, bloat-free toolkit, written in C, to solve complex, c
 
 ## Showcase
 
+Try it out in the [web demo](https://mvparker810.github.io/free_form_web).  
+
+
 todo - put gifs here
 
 ## Usage & Documentation
