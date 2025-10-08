@@ -9,7 +9,10 @@ free_form is a minimalist, bloat-free toolkit, written in C, to solve complex, c
 - Extensible constraint system
 - Symbolic differentiation for constraint solving
 
-## Integration
+Try it out in the [web demo](https://mvparker810.github.io/free_form_web).  
+
+
+todo - put gifs here
 
 ```c
 // In exactly one .c/.cpp file:
