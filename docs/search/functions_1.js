@@ -1,0 +1,28 @@
+var searchData=
+[
+  ['ff_5fconstraintdef_5fdefault_0',['ff_ConstraintDef_DEFAULT',['../group___a_p_i.html#ga424bb414b9ed01fe04a6c1a1b495439f',1,'freeform.h']]],
+  ['ff_5fconstraintdef_5fisvalid_1',['ff_ConstraintDef_IsValid',['../group___a_p_i.html#ga4936a7d22fd8e5e58f103643d73ec3e3',1,'freeform.h']]],
+  ['ff_5fdeclare_5fgentable_2',['FF_DECLARE_GENTABLE',['../group___sketch.html#ga2ae9bf19a648644615dac3c7a2db2a72',1,'FF_DECLARE_GENTABLE(ff_param, ff_Parameter):&#160;freeform.h'],['../group___sketch.html#ga7974cd9a8f1c0e235f4050359fb69020',1,'FF_DECLARE_GENTABLE(ff_entity, ff_Entity):&#160;freeform.h'],['../group___sketch.html#gae455f98088b0db5337564b016c6e09d8',1,'FF_DECLARE_GENTABLE(ff_constraint, ff_Constraint):&#160;freeform.h']]],
+  ['ff_5fentitydef_5fdefault_3',['ff_EntityDef_DEFAULT',['../group___a_p_i.html#ga2396b01a3039a5eaa7c59b8f056514ff',1,'freeform.h']]],
+  ['ff_5fentitydef_5fisvalid_4',['ff_EntityDef_IsValid',['../group___a_p_i.html#ga22d4a16956dde5f4a638012a54fc8725',1,'freeform.h']]],
+  ['ff_5fparameterdef_5fdefault_5',['ff_ParameterDef_DEFAULT',['../group___a_p_i.html#gaffca8f40ed12bd5245960ab2b78ce898',1,'freeform.h']]],
+  ['ff_5fparameterdef_5fisvalid_6',['ff_ParameterDef_IsValid',['../group___a_p_i.html#ga36ca8d0120ca07bef9858f87d948cd78',1,'freeform.h']]],
+  ['ffconstraint_5fequals_7',['ffConstraint_Equals',['../group___a_p_i.html#gab4d3953c50e6f638dc00facdaf172ba0',1,'freeform.h']]],
+  ['ffentity_5fequals_8',['ffEntity_Equals',['../group___a_p_i.html#gaebb11f2cc819dba19e16074ace13c589',1,'freeform.h']]],
+  ['ffparam_5fequals_9',['ffParam_Equals',['../group___a_p_i.html#gaf4dfc11deb310f61202ac007b218c5fa',1,'freeform.h']]],
+  ['ffsketch_5faddconstraint_10',['ffSketch_AddConstraint',['../group___a_p_i.html#ga1d3eb6cca13b578255eb967d3f227e71',1,'freeform.h']]],
+  ['ffsketch_5faddentity_11',['ffSketch_AddEntity',['../group___a_p_i.html#ga9a89799d9822cc721be37dabcff3a9bb',1,'freeform.h']]],
+  ['ffsketch_5faddparameter_12',['ffSketch_AddParameter',['../group___a_p_i.html#gaafe01ccc843450bc333b6c2ea9384968',1,'freeform.h']]],
+  ['ffsketch_5fdeleteconstraint_13',['ffSketch_DeleteConstraint',['../group___a_p_i.html#ga920972b2742fcbdde3a5c8cc0918b0fa',1,'freeform.h']]],
+  ['ffsketch_5fdeleteentity_14',['ffSketch_DeleteEntity',['../group___a_p_i.html#ga483e6578a4ad36e35cfd37d27dc3ef84',1,'freeform.h']]],
+  ['ffsketch_5fdeleteparameter_15',['ffSketch_DeleteParameter',['../group___a_p_i.html#ga0ab2365f7f1856bd0f41a932ce58d421',1,'freeform.h']]],
+  ['ffsketch_5ffree_16',['ffSketch_Free',['../group___a_p_i.html#ga12b12b4fde488be672408d548675e183',1,'freeform.h']]],
+  ['ffsketch_5fgetconstraint_17',['ffSketch_GetConstraint',['../group___a_p_i.html#gac5d142d4d0d56fdda1e09bc75094eb7e',1,'freeform.h']]],
+  ['ffsketch_5fgetconstraint_5fprotected_18',['ffSketch_GetConstraint_Protected',['../group___a_p_i.html#ga33137493250787d301538a0267713822',1,'freeform.h']]],
+  ['ffsketch_5fgetentity_19',['ffSketch_GetEntity',['../group___a_p_i.html#ga20636f5ea0be1151dcfe112ef936ef0b',1,'freeform.h']]],
+  ['ffsketch_5fgetentity_5fprotected_20',['ffSketch_GetEntity_Protected',['../group___a_p_i.html#ga47f946c9050edbb70d44e7d16a8c509a',1,'freeform.h']]],
+  ['ffsketch_5fgetparameter_21',['ffSketch_GetParameter',['../group___a_p_i.html#ga138d67787cc86c786f2a738351f6b4a8',1,'freeform.h']]],
+  ['ffsketch_5fgetparameter_5fprotected_22',['ffSketch_GetParameter_Protected',['../group___a_p_i.html#ga2746b423e3ae92202b2fb77670712549',1,'freeform.h']]],
+  ['ffsketch_5finit_23',['ffSketch_Init',['../group___a_p_i.html#ga05c1fd9a5bf6aed5b08a1efbca257953',1,'freeform.h']]],
+  ['ffsketch_5fsolve_24',['ffSketch_Solve',['../group___a_p_i.html#ga91ffe86609d180c397b87d09af7eb109',1,'freeform.h']]]
+];

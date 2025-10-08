@@ -1,16 +1,25 @@
-//FF_FREEFORM_H_
-//FF_FREEFORM_IMPL_
-//FF_API
+/**
+ * @file freeform.h
+ * @brief Minimalist parametric 2D geometric constraint solver library
+ *
+ * freeform is a single-header library for solving constrained parametric 2D geometric systems.
+ * Supports points, lines, circles, and arcs with extensible constraint types.
+ *
+ * @author [Author]
+ * @date [Date]
+ * @version 1.0
+ *
+ * Usage:
+ * @code
+ *   // In exactly one .c/.cpp file:
+ *   #define FF_FREEFORM_IMPLEMENTATION
+ *   #include "freeform.h"
+ *
+ *   // In all other translation units:
+ *   #include "freeform.h"
+ * @endcode
+ */
 
-/* freeform.h — single-header library
-   Usage:
-     // In exactly one .c/.cpp file:
-     #define FF_FREEFORM_IMPLEMENTATION
-     #include "freeform.h"
-
-     // In all other translation units:
-     #include "freeform.h"
-*/
 #ifndef FF_FREEFORM_H_
 #define FF_FREEFORM_H_
 
@@ -32,20 +41,33 @@ extern "C" {
 
 #pragma region Types;
 
-// -=-=-=-=- Prim Types -=-=-=-=- //
+/** @defgroup PrimitiveTypes Primitive Types
+ *  @{
+ */
 
+/** @brief Floating point type used throughout the library */
 typedef double ff_float;
+
+/** @brief 2D vector/point */
 typedef struct ff_vec2 {
-    ff_float x;
-    ff_float y;
+    ff_float x; /**< X coordinate */
+    ff_float y; /**< Y coordinate */
 } ff_vec2;
 
-
+/** @brief Invalid index sentinel value */
 #define FF_INVALID_INDEX 0xFFFF
+
+/**
+ * @brief Generational handle for safe referencing of array elements
+ *
+ * Uses generation counters to detect stale references after deletions.
+ */
 typedef struct ff_GeneralHandle {
-    uint16_t idx;
-    uint32_t gen;
+    uint16_t idx; /**< Index into array */
+    uint32_t gen; /**< Generation counter */
 } ff_GeneralHandle;
+
+/** @} */
 
 /* ===== Generic gen+idx table: declarations ===== */
 #define FF_DECLARE_GENTABLE(PREFIX, PAYLOAD_T)                                            \
@@ -68,117 +90,199 @@ typedef struct ff_GeneralHandle {
  
 
 
-// -- Paramters -- //
+/** @defgroup Parameters Parameters
+ *  @brief Numeric values modified by the constraint solver
+ *  @{
+ */
 
+/** @brief Handle to a parameter */
 typedef ff_GeneralHandle ff_ParamHandle;
 
+/**
+ * @brief Parameter definition
+ */
 typedef struct ff_ParameterDef {
-    ff_float v;
+    ff_float v; /**< Parameter value */
 } ff_ParameterDef;
+
+/**
+ * @brief Parameter storage
+ */
 typedef struct ff_Parameter {
-    ff_ParameterDef def;
+    ff_ParameterDef def; /**< Parameter definition */
 } ff_Parameter;
 
-// -- Entitites -- //
+/** @} */
 
+/** @defgroup Entities Geometric Entities
+ *  @brief 2D geometric primitives (points, lines, circles, arcs)
+ *  @{
+ */
+
+/**
+ * @brief Type of geometric entity
+ */
 enum ff_EntityType {
-    FF_POINT,
-    FF_LINE,
-    FF_CIRCLE,
-    FF_ARC
+    FF_POINT,  /**< 2D point */
+    FF_LINE,   /**< Line segment between two points */
+    FF_CIRCLE, /**< Circle with center and radius */
+    FF_ARC     /**< Circular arc through three points */
 };
 
+/** @brief Handle to an entity */
 typedef ff_GeneralHandle ff_EntityHandle;
 
+/**
+ * @brief Entity definition
+ *
+ * Defines a geometric entity. The type field determines which union member is valid.
+ */
 typedef struct ff_EntityDef {
-    enum ff_EntityType type;
+    enum ff_EntityType type; /**< Entity type */
     union {
         struct {
-            ff_ParamHandle      x;
-            ff_ParamHandle      y;
+            ff_ParamHandle x; /**< X coordinate parameter */
+            ff_ParamHandle y; /**< Y coordinate parameter */
         } point;
         struct {
-            ff_EntityHandle     p1;
-            ff_EntityHandle     p2;
+            ff_EntityHandle p1; /**< First endpoint */
+            ff_EntityHandle p2; /**< Second endpoint */
         } line;
         struct {
-            ff_EntityHandle     c;
-            ff_ParamHandle      r;
+            ff_EntityHandle c; /**< Center point entity */
+            ff_ParamHandle  r; /**< Radius parameter */
         } circle;
         struct {
-            ff_EntityHandle     p1;
-            ff_EntityHandle     p2;
-            ff_EntityHandle     p3;
+            ff_EntityHandle p1; /**< First point on arc */
+            ff_EntityHandle p2; /**< Second point on arc */
+            ff_EntityHandle p3; /**< Third point on arc */
         } arc;
-    } data;
+    } data; /**< Entity-specific data */
 } ff_EntityDef;
 
+/**
+ * @brief Entity storage
+ */
 typedef struct ff_Entity {
-    ff_EntityDef def;
+    ff_EntityDef def; /**< Entity definition */
 } ff_Entity;
 
+/** @} */
 
-// -- Solving -- //
 
+/** @defgroup Expressions Expression System
+ *  @brief Symbolic expression trees for constraint equations
+ *  @{
+ */
+
+/**
+ * @brief Expression operator type
+ *
+ * Defines the operation performed by an expression node.
+ * Supports arithmetic, trigonometric, and mathematical operations.
+ */
 typedef enum {
-    OperatorType_CONST,
-    OperatorType_PARAM,
-    OperatorType_EXTR_PARAM,
-    OperatorType_ADD,
-    OperatorType_SUB,
-    OperatorType_MUL,
-    OperatorType_DIV,
-    OperatorType_SIN,
-    OperatorType_COS,
-    OperatorType_ASIN,
-    OperatorType_ACOS,
-    OperatorType_SQRT,
-    OperatorType_SQR
+    OperatorType_CONST,        /**< Constant value */
+    OperatorType_PARAM,        /**< Direct parameter reference (by handle) */
+    OperatorType_EXTR_PARAM,   /**< External parameter reference (legacy) */
+    OperatorType_PARAM_IDX,    /**< Indexed parameter reference (constraint.pars[idx]) */
+    OperatorType_ENTITY_IDX,   /**< Indexed entity reference (constraint.ents[idx]) */
+    OperatorType_POINT_X,      /**< Point entity X parameter (ents[idx].point.x) */
+    OperatorType_POINT_Y,      /**< Point entity Y parameter (ents[idx].point.y) */
+    OperatorType_CIRCLE_R,     /**< Circle entity radius parameter (ents[idx].circle.r) */
+    OperatorType_CIRCLE_C,     /**< Circle entity center (ents[idx].circle.c) */
+    OperatorType_LINE_P1,      /**< Line entity first point (ents[idx].line.p1) */
+    OperatorType_LINE_P2,      /**< Line entity second point (ents[idx].line.p2) */
+    OperatorType_ADD,          /**< Addition (a + b) */
+    OperatorType_SUB,          /**< Subtraction (a - b) */
+    OperatorType_MUL,          /**< Multiplication (a * b) */
+    OperatorType_DIV,          /**< Division (a / b) */
+    OperatorType_SIN,          /**< Sine (sin(a)) */
+    OperatorType_COS,          /**< Cosine (cos(a)) */
+    OperatorType_ASIN,         /**< Arcsine (asin(a)) */
+    OperatorType_ACOS,         /**< Arccosine (acos(a)) */
+    OperatorType_SQRT,         /**< Square root (sqrt(a)) */
+    OperatorType_SQR           /**< Square (a^2) */
 } ff_OperatorType;
 
-//todo can i union some of these
+/**
+ * @brief Expression tree node
+ *
+ * Represents a node in a symbolic expression tree.
+ * The solver uses these to build constraint equations and compute derivatives.
+ */
 typedef struct ff_Expr {
-    ff_OperatorType op_type;
-    struct ff_Expr* a;
-    struct ff_Expr* b;
-    ff_float value; //for constants
-    ff_ParamHandle param_H;
+    ff_OperatorType op_type;  /**< Operator type */
+    struct ff_Expr* a;        /**< First operand (or only operand for unary ops) */
+    struct ff_Expr* b;        /**< Second operand (for binary ops) */
+    union {
+        ff_float value;       /**< Constant value (for OperatorType_CONST) */
+        ff_ParamHandle param_H; /**< Parameter handle (for OperatorType_PARAM) */
+        uint16_t param_idx;   /**< Parameter array index (for OperatorType_PARAM_IDX) */
+        uint16_t entity_idx;  /**< Entity array index (for OperatorType_ENTITY_IDX) */
+    };
 } ff_Expr;
 
-// -- Constraints -- //
+/** @} */
 
+/** @defgroup Constraints Constraints
+ *  @brief Relationships between entities that the solver maintains
+ *  @{
+ */
+
+/**
+ * @brief Constraint type configuration
+ *
+ * Add custom constraint types here using CONS(NAME) macro.
+ */
 #define FF_CONSTRAINTS_CFG      \
     CONS(GENERAL)               \
     CONS(HORIZONTAL)            \
 
+/**
+ * @brief Constraint type enumeration
+ */
 typedef enum ff_ConstraintType{
     #define CONS(n) FF_##n,
-    FF_CONSTRAINTS_CFG    
+    FF_CONSTRAINTS_CFG
     CONS(COUNT)
     #undef CONS
 } ff_ConstraintType;
 
+/** @brief Maximum entities per constraint */
 #define FFCONS_MAXENT 16
+/** @brief Maximum parameters per constraint */
 #define FFCONS_MAXPAR 16
 
+/** @brief Handle to a constraint */
 typedef ff_GeneralHandle ff_ConstraintHandle;
 
+/**
+ * @brief Constraint definition
+ */
 typedef struct ff_ConstraintDef {
-    ff_Expr* eq;
-    enum ff_ConstraintType type;
-    ff_EntityHandle     ents[FFCONS_MAXENT];
-    ff_ParamHandle      pars[FFCONS_MAXPAR];
+    ff_Expr* eq;                         /**< Constraint equation (should equal zero) */
+    enum ff_ConstraintType type;         /**< Constraint type */
+    ff_EntityHandle ents[FFCONS_MAXENT]; /**< Entities involved in constraint */
+    ff_ParamHandle pars[FFCONS_MAXPAR];  /**< Parameters involved in constraint */
+    uint16_t ent_count;                  /**< Number of entities in ents[] array */
+    uint16_t par_count;                  /**< Number of parameters in pars[] array */
 } ff_ConstraintDef;
 
+/**
+ * @brief Constraint storage with solver data
+ */
 typedef struct ff_Constraint {
-    ff_ConstraintDef def;
+    ff_ConstraintDef def; /**< Constraint definition */
 
     struct {
-        ff_float    err;
-        ff_Expr**   dervs;
-        ff_float*   dervs_y; 
-    } JMR; //Jacobian Matrix Row
+        ff_float    err;      /**< Current constraint error */
+        ff_Expr**   dervs;    /**< Symbolic derivatives */
+        ff_float*   dervs_y;  /**< Evaluated derivative values */
+    } JMR; /**< Jacobian matrix row data */
 } ff_Constraint;
+
+/** @} */
 
 
 /*
@@ -198,24 +302,31 @@ typedef struct Jacobian_Matrix_Row {
 
 
 
-// -- Sketch -- //
+/** @defgroup Sketch Sketch
+ *  @brief Main container for a parametric sketch system
+ *  @{
+ */
 
-//todo move this respective #def down here
 FF_DECLARE_GENTABLE(ff_param,      ff_Parameter);
 FF_DECLARE_GENTABLE(ff_entity,     ff_Entity);
 FF_DECLARE_GENTABLE(ff_constraint, ff_Constraint);
 
+/**
+ * @brief Parametric sketch container
+ *
+ * Contains all parameters, entities, and constraints for a 2D sketch.
+ * The solver adjusts parameter values to satisfy all constraints.
+ */
 typedef struct ff_Sketch {
-    ff_param__table      params;
-    ff_entity__table     entities;
-    ff_constraint__table constraints;
+    ff_param__table      params;      /**< Parameter storage */
+    ff_entity__table     entities;    /**< Entity storage */
+    ff_constraint__table constraints; /**< Constraint storage */
 
-    bool link_outdated;
+    bool link_outdated; /**< Whether entity-parameter links need updating */
 
-    ff_float* normal_mtr;
-    ff_float* itrm_sol;
-
-    ff_float* cached_params; //TODO use these
+    ff_float* normal_mtr;    /**< Normal matrix for solving */
+    ff_float* itrm_sol;      /**< Intermediate solution vector */
+    ff_float* cached_params; /**< Cached parameter values */
 
     ff_Constraint**  tmp_contraints;
     ff_Parameter**   tmp_params;
@@ -236,61 +347,261 @@ typedef struct ff_Sketch {
 
 
 
+/** @defgroup API Public API
+ *  @brief Core functions for sketch manipulation and solving
+ *  @{
+ */
 
-
-
-
+/**
+ * @brief Initialize a sketch
+ * @param skt Sketch to initialize
+ * @param p_cap Parameter capacity
+ * @param e_cap Entity capacity
+ * @param c_cap Constraint capacity
+ */
 FF_API void ffSketch_Init(ff_Sketch* skt, uint16_t p_cap, uint16_t e_cap, uint16_t c_cap);
+
+/**
+ * @brief Free sketch resources
+ * @param skt Sketch to free
+ */
 FF_API void ffSketch_Free(ff_Sketch* skt);
 
+/**
+ * @brief Solve the constraint system
+ * @param skt Sketch to solve
+ * @param tolerance Convergence tolerance
+ * @param max_steps Maximum solver iterations
+ * @return true if converged, false otherwise
+ */
 FF_API bool ffSketch_Solve(ff_Sketch* skt, double tolerance, uint32_t max_steps);
 
-FF_API ff_ParameterDef  ff_ParameterDef_DEFAULT();
-FF_API ff_EntityDef     ff_EntityDef_DEFAULT(enum ff_EntityType type);
+/** @brief Get default parameter definition */
+FF_API ff_ParameterDef ff_ParameterDef_DEFAULT();
+
+/** @brief Get default entity definition for given type */
+FF_API ff_EntityDef ff_EntityDef_DEFAULT(enum ff_EntityType type);
+
+/** @brief Get default constraint definition */
 FF_API ff_ConstraintDef ff_ConstraintDef_DEFAULT();
 
-FF_API bool ff_ParameterDef_IsValid     (const ff_ParameterDef def);
-FF_API bool ff_EntityDef_IsValid    (const ff_EntityDef def);
+/** @brief Check if parameter definition is valid */
+FF_API bool ff_ParameterDef_IsValid(const ff_ParameterDef def);
+
+/** @brief Check if entity definition is valid */
+FF_API bool ff_EntityDef_IsValid(const ff_EntityDef def);
+
+/** @brief Check if constraint definition is valid */
 FF_API bool ff_ConstraintDef_IsValid(const ff_ConstraintDef def);
 
-
+/** @brief Compare parameter handles for equality */
 FF_API bool ffParam_Equals(ff_ParamHandle a, ff_ParamHandle b);
+
+/** @brief Compare entity handles for equality */
 FF_API bool ffEntity_Equals(ff_EntityHandle a, ff_EntityHandle b);
+
+/** @brief Compare constraint handles for equality */
 FF_API bool ffConstraint_Equals(ff_ConstraintHandle a, ff_ConstraintHandle b);
 
-// high level push n pop
-FF_API ff_ParamHandle      ffSketch_AddParameter    (ff_Sketch* skt, const ff_ParameterDef  p_def);
-FF_API ff_EntityHandle     ffSketch_AddEntity       (ff_Sketch* skt, const ff_EntityDef     e_def);
-FF_API ff_ConstraintHandle ffSketch_AddConstraint   (ff_Sketch* skt, const ff_ConstraintDef c_def); 
+/**
+ * @brief Add a parameter to the sketch
+ * @param skt Sketch to add to
+ * @param p_def Parameter definition
+ * @return Handle to the new parameter
+ */
+FF_API ff_ParamHandle ffSketch_AddParameter(ff_Sketch* skt, const ff_ParameterDef p_def);
 
+/**
+ * @brief Add an entity to the sketch
+ * @param skt Sketch to add to
+ * @param e_def Entity definition
+ * @return Handle to the new entity
+ */
+FF_API ff_EntityHandle ffSketch_AddEntity(ff_Sketch* skt, const ff_EntityDef e_def);
+
+/**
+ * @brief Add a constraint to the sketch
+ * @param skt Sketch to add to
+ * @param c_def Constraint definition
+ * @return Handle to the new constraint
+ */
+FF_API ff_ConstraintHandle ffSketch_AddConstraint(ff_Sketch* skt, const ff_ConstraintDef c_def);
+
+/**
+ * @brief Delete a parameter from the sketch
+ * @param skt Sketch to delete from
+ * @param h Parameter handle
+ * @return true if successfully deleted
+ */
 FF_API bool ffSketch_DeleteParameter(ff_Sketch* skt, ff_ParamHandle h);
+
+/**
+ * @brief Delete an entity from the sketch
+ * @param skt Sketch to delete from
+ * @param h Entity handle
+ * @return true if successfully deleted
+ */
 FF_API bool ffSketch_DeleteEntity(ff_Sketch* skt, ff_EntityHandle h);
+
+/**
+ * @brief Delete a constraint from the sketch
+ * @param skt Sketch to delete from
+ * @param h Constraint handle
+ * @return true if successfully deleted
+ */
 FF_API bool ffSketch_DeleteConstraint(ff_Sketch* skt, ff_ConstraintHandle h);
 
-// high level gettrs n setters //
-FF_API ff_Parameter*       ffSketch_GetParameter(ff_Sketch* skt, ff_ParamHandle h);
+/**
+ * @brief Get mutable parameter by handle
+ * @param skt Sketch
+ * @param h Parameter handle
+ * @return Pointer to parameter, or NULL if invalid
+ */
+FF_API ff_Parameter* ffSketch_GetParameter(ff_Sketch* skt, ff_ParamHandle h);
+
+/**
+ * @brief Get const parameter by handle
+ * @param skt Sketch
+ * @param h Parameter handle
+ * @return Const pointer to parameter, or NULL if invalid
+ */
 FF_API const ff_Parameter* ffSketch_GetParameter_Protected(const ff_Sketch* skt, ff_ParamHandle h);
 
-FF_API ff_Entity*          ffSketch_GetEntity(ff_Sketch* skt, ff_EntityHandle h);
-FF_API const ff_Entity*    ffSketch_GetEntity_Protected(const ff_Sketch* skt, ff_EntityHandle h);
+/**
+ * @brief Get mutable entity by handle
+ * @param skt Sketch
+ * @param h Entity handle
+ * @return Pointer to entity, or NULL if invalid
+ */
+FF_API ff_Entity* ffSketch_GetEntity(ff_Sketch* skt, ff_EntityHandle h);
 
-FF_API ff_Constraint*          ffSketch_GetConstraint(ff_Sketch* skt, ff_ConstraintHandle h);
-FF_API const ff_Constraint*    ffSketch_GetConstraint_Protected(const ff_Sketch* skt, ff_ConstraintHandle h);
+/**
+ * @brief Get const entity by handle
+ * @param skt Sketch
+ * @param h Entity handle
+ * @return Const pointer to entity, or NULL if invalid
+ */
+FF_API const ff_Entity* ffSketch_GetEntity_Protected(const ff_Sketch* skt, ff_EntityHandle h);
+
+/**
+ * @brief Get mutable constraint by handle
+ * @param skt Sketch
+ * @param h Constraint handle
+ * @return Pointer to constraint, or NULL if invalid
+ */
+FF_API ff_Constraint* ffSketch_GetConstraint(ff_Sketch* skt, ff_ConstraintHandle h);
+
+/**
+ * @brief Get const constraint by handle
+ * @param skt Sketch
+ * @param h Constraint handle
+ * @return Const pointer to constraint, or NULL if invalid
+ */
+FF_API const ff_Constraint* ffSketch_GetConstraint_Protected(const ff_Sketch* skt, ff_ConstraintHandle h);
 
 
-
-
-
-
-//todo prefix these with ff_
-
+/**
+ * @brief Free an expression tree
+ * @param expr Expression to free
+ */
 FF_API void expr_free(ff_Expr* expr);
+
+/**
+ * @brief Create expression with binary/unary operator
+ * @param type Operator type
+ * @param a First operand (or only operand for unary)
+ * @param b Second operand (NULL for unary ops)
+ * @return New expression node
+ */
 FF_API ff_Expr* exprInit_op(ff_OperatorType type, ff_Expr* a, ff_Expr* b);
+
+/**
+ * @brief Create constant expression
+ * @param value Constant value
+ * @return New constant expression
+ */
 FF_API ff_Expr* exprInit_const(ff_float value);
+
+/**
+ * @brief Create parameter reference expression
+ * @param param_H Parameter handle
+ * @return New parameter expression
+ */
 FF_API ff_Expr* exprInit_param(ff_ParamHandle param_H);
 
+/**
+ * @brief Create indexed parameter reference expression
+ * @param idx Index into constraint.pars[] array
+ * @return New indexed parameter expression
+ */
+FF_API ff_Expr* exprInit_param_idx(uint16_t idx);
+
+/**
+ * @brief Create indexed entity reference expression
+ * @param idx Index into constraint.ents[] array
+ * @return New indexed entity expression
+ */
+FF_API ff_Expr* exprInit_entity_idx(uint16_t idx);
+
+/**
+ * @brief Create expression for point entity's X parameter
+ * @param entity_idx Index into constraint.ents[] array
+ * @return Expression that resolves to ents[entity_idx].point.x parameter
+ * @note Only valid if ents[entity_idx] is a POINT entity
+ */
+FF_API ff_Expr* exprInit_point_x(uint16_t entity_idx);
+
+/**
+ * @brief Create expression for point entity's Y parameter
+ * @param entity_idx Index into constraint.ents[] array
+ * @return Expression that resolves to ents[entity_idx].point.y parameter
+ * @note Only valid if ents[entity_idx] is a POINT entity
+ */
+FF_API ff_Expr* exprInit_point_y(uint16_t entity_idx);
+
+/**
+ * @brief Create expression for circle entity's radius parameter
+ * @param entity_idx Index into constraint.ents[] array
+ * @return Expression that resolves to ents[entity_idx].circle.r parameter
+ * @note Only valid if ents[entity_idx] is a CIRCLE entity
+ */
+FF_API ff_Expr* exprInit_circle_radius(uint16_t entity_idx);
+
+/**
+ * @brief Create expression for circle entity's center point index
+ * @param entity_idx Index into constraint.ents[] array
+ * @return Expression that resolves to ents[entity_idx].circle.c entity
+ * @note Only valid if ents[entity_idx] is a CIRCLE entity
+ */
+FF_API ff_Expr* exprInit_circle_center(uint16_t entity_idx);
+
+/**
+ * @brief Evaluate an expression within a constraint context
+ * @param expr Expression to evaluate
+ * @param constraint Constraint providing entity and parameter arrays
+ * @param sketch Sketch containing all entities and parameters
+ * @return Evaluated result
+ */
+FF_API ff_float expr_evaluate_constraint(ff_Expr* expr, const ff_Constraint* constraint, const ff_Sketch* sketch);
+
+/**
+ * @brief Evaluate an expression (legacy, direct parameter table access)
+ * @param expr Expression to evaluate
+ * @param t Parameter table for looking up parameter values
+ * @return Evaluated result
+ */
 FF_API ff_float expr_evaluate(ff_Expr* expr, const ff_param__table *t);
+
+/**
+ * @brief Compute symbolic derivative of expression
+ * @param expr Expression to differentiate
+ * @param indp_param Parameter to differentiate with respect to
+ * @param protect_params Whether to protect parameters from modification
+ * @return New expression representing the derivative
+ */
 FF_API ff_Expr* expr_derivative(ff_Expr* expr, ff_ParamHandle indp_param, bool protect_params);
+
+/** @} */
 
 
 
@@ -635,6 +946,54 @@ ff_Expr* exprInit_param(ff_ParamHandle param_H) {
     return expr;
 }
 
+ff_Expr* exprInit_param_idx(uint16_t idx) {
+    ff_Expr* expr = malloc(sizeof(ff_Expr));
+    expr->op_type = OperatorType_PARAM_IDX;
+    expr->param_idx = idx;
+    expr->a = expr->b = NULL;
+    return expr;
+}
+
+ff_Expr* exprInit_entity_idx(uint16_t idx) {
+    ff_Expr* expr = malloc(sizeof(ff_Expr));
+    expr->op_type = OperatorType_ENTITY_IDX;
+    expr->entity_idx = idx;
+    expr->a = expr->b = NULL;
+    return expr;
+}
+
+ff_Expr* exprInit_point_x(uint16_t entity_idx) {
+    ff_Expr* expr = malloc(sizeof(ff_Expr));
+    expr->op_type = OperatorType_POINT_X;
+    expr->entity_idx = entity_idx;
+    expr->a = expr->b = NULL;
+    return expr;
+}
+
+ff_Expr* exprInit_point_y(uint16_t entity_idx) {
+    ff_Expr* expr = malloc(sizeof(ff_Expr));
+    expr->op_type = OperatorType_POINT_Y;
+    expr->entity_idx = entity_idx;
+    expr->a = expr->b = NULL;
+    return expr;
+}
+
+ff_Expr* exprInit_circle_radius(uint16_t entity_idx) {
+    ff_Expr* expr = malloc(sizeof(ff_Expr));
+    expr->op_type = OperatorType_CIRCLE_R;
+    expr->entity_idx = entity_idx;
+    expr->a = expr->b = NULL;
+    return expr;
+}
+
+ff_Expr* exprInit_circle_center(uint16_t entity_idx) {
+    ff_Expr* expr = malloc(sizeof(ff_Expr));
+    expr->op_type = OperatorType_CIRCLE_C;
+    expr->entity_idx = entity_idx;
+    expr->a = expr->b = NULL;
+    return expr;
+}
+
 static ff_Expr* exprInit_external_param(ff_Expr* expr) {
     ff_Expr* new_expr = malloc(sizeof(ff_Expr));
     new_expr->op_type = OperatorType_EXTR_PARAM;
@@ -666,6 +1025,95 @@ ff_float expr_evaluate(ff_Expr* expr, const ff_param__table *t) {
         case OperatorType_ACOS: return acos(expr_evaluate(expr->a,t));
         case OperatorType_SQRT: return sqrt(expr_evaluate(expr->a,t));
         case OperatorType_SQR: { ff_float val = expr_evaluate(expr->a,t); return val * val; }
+    }
+    return 0.0;
+}
+
+// Evaluate expression within a constraint context (supports indexed expressions)
+ff_float expr_evaluate_constraint(ff_Expr* expr, const ff_Constraint* constraint, const ff_Sketch* sketch) {
+    if (!expr) return 0.0;
+
+    switch (expr->op_type) {
+        case OperatorType_CONST:
+            return expr->value;
+
+        case OperatorType_PARAM: {
+            const ff_Parameter* p = ff_paramTBL_get_const(&sketch->params, expr->param_H);
+            return p ? p->def.v : 0.0;
+        }
+
+        case OperatorType_PARAM_IDX: {
+            if (expr->param_idx >= constraint->def.par_count) return 0.0;
+            ff_ParamHandle ph = constraint->def.pars[expr->param_idx];
+            const ff_Parameter* p = ff_paramTBL_get_const(&sketch->params, ph);
+            return p ? p->def.v : 0.0;
+        }
+
+        case OperatorType_POINT_X: {
+            if (expr->entity_idx >= constraint->def.ent_count) return 0.0;
+            ff_EntityHandle eh = constraint->def.ents[expr->entity_idx];
+            const ff_Entity* e = ff_entityTBL_get_const(&sketch->entities, eh);
+            if (!e || e->def.type != FF_POINT) return 0.0;
+            const ff_Parameter* p = ff_paramTBL_get_const(&sketch->params, e->def.data.point.x);
+            return p ? p->def.v : 0.0;
+        }
+
+        case OperatorType_POINT_Y: {
+            if (expr->entity_idx >= constraint->def.ent_count) return 0.0;
+            ff_EntityHandle eh = constraint->def.ents[expr->entity_idx];
+            const ff_Entity* e = ff_entityTBL_get_const(&sketch->entities, eh);
+            if (!e || e->def.type != FF_POINT) return 0.0;
+            const ff_Parameter* p = ff_paramTBL_get_const(&sketch->params, e->def.data.point.y);
+            return p ? p->def.v : 0.0;
+        }
+
+        case OperatorType_CIRCLE_R: {
+            if (expr->entity_idx >= constraint->def.ent_count) return 0.0;
+            ff_EntityHandle eh = constraint->def.ents[expr->entity_idx];
+            const ff_Entity* e = ff_entityTBL_get_const(&sketch->entities, eh);
+            if (!e || e->def.type != FF_CIRCLE) return 0.0;
+            const ff_Parameter* p = ff_paramTBL_get_const(&sketch->params, e->def.data.circle.r);
+            return p ? p->def.v : 0.0;
+        }
+
+        case OperatorType_EXTR_PARAM:
+            return expr_evaluate_constraint(expr->a, constraint, sketch);
+
+        case OperatorType_ADD:
+            return expr_evaluate_constraint(expr->a, constraint, sketch) +
+                   expr_evaluate_constraint(expr->b, constraint, sketch);
+
+        case OperatorType_SUB:
+            return expr_evaluate_constraint(expr->a, constraint, sketch) -
+                   expr_evaluate_constraint(expr->b, constraint, sketch);
+
+        case OperatorType_MUL:
+            return expr_evaluate_constraint(expr->a, constraint, sketch) *
+                   expr_evaluate_constraint(expr->b, constraint, sketch);
+
+        case OperatorType_DIV:
+            return expr_evaluate_constraint(expr->a, constraint, sketch) /
+                   expr_evaluate_constraint(expr->b, constraint, sketch);
+
+        case OperatorType_SIN:
+            return sin(expr_evaluate_constraint(expr->a, constraint, sketch));
+
+        case OperatorType_COS:
+            return cos(expr_evaluate_constraint(expr->a, constraint, sketch));
+
+        case OperatorType_ASIN:
+            return asin(expr_evaluate_constraint(expr->a, constraint, sketch));
+
+        case OperatorType_ACOS:
+            return acos(expr_evaluate_constraint(expr->a, constraint, sketch));
+
+        case OperatorType_SQRT:
+            return sqrt(expr_evaluate_constraint(expr->a, constraint, sketch));
+
+        case OperatorType_SQR: {
+            ff_float val = expr_evaluate_constraint(expr->a, constraint, sketch);
+            return val * val;
+        }
     }
     return 0.0;
 }
